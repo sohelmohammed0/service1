@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Service 1</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      font-family: Arial, sans-serif;
+    }
+    .card {
+      background: white;
+      border-radius: 20px;
+      padding: 60px 80px;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .badge {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      padding: 8px 24px;
+      border-radius: 50px;
+      font-size: 14px;
+      font-weight: bold;
+      margin-bottom: 20px;
+      display: inline-block;
+    }
+    h1 { font-size: 48px; color: #333; margin-bottom: 16px; }
+    p { font-size: 18px; color: #666; margin-bottom: 30px; }
+    .status {
+      background: #e8f5e9;
+      color: #2e7d32;
+      padding: 12px 30px;
+      border-radius: 50px;
+      font-weight: bold;
+      font-size: 16px;
+      display: inline-block;
+    }
+    .dot {
+      width: 10px; height: 10px;
+      background: #2e7d32;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 8px;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">AWS CodePipeline</div>
+    <h1> Service 1</h1>
+    <p>Deployed successfully via CI/CD pipeline</p>
+    <div class="status">
+      <span class="dot"></span> Running on port 8081
+    </div>
+  </div>
+</body>
+</html>
