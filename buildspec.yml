@@ -1,0 +1,71 @@
+version: 0.2
+
+env:
+  variables:
+    IMAGE_REPO_NAME: service1
+    IMAGE_TAG: latest
+    AWS_DEFAULT_REGION: us-east-1
+    ACCOUNT_ID: 412128478995
+    EC2_HOST: 3.92.134.179
+    HOST_PORT: 8081
+    TEMP_PORT: 9090
+
+phases:
+  pre_build:
+    commands:
+      - echo "Logging into ECR..."
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+
+      # SSH setup
+      - mkdir -p ~/.ssh
+      - echo "$SSH_KEY" > ~/.ssh/id_rsa
+      - chmod 600 ~/.ssh/id_rsa
+      - ssh-keyscan $EC2_HOST >> ~/.ssh/known_hosts
+
+  build:
+    commands:
+      - echo "Building Docker image..."
+      - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .
+
+      - echo "Tagging image..."
+      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+
+  post_build:
+    commands:
+      - echo "Pushing image to ECR..."
+      - docker push $ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+
+      - echo "Deploying to EC2 with zero downtime..."
+
+      - |
+        ssh ubuntu@$EC2_HOST "
+          set -e
+
+          IMAGE=$ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+
+          echo 'Pull latest image'
+          docker pull \$IMAGE
+
+          echo 'Start NEW container on TEMP port'
+          docker run -d -p $TEMP_PORT:8080 --name ${IMAGE_REPO_NAME}-new \$IMAGE
+
+          echo 'Waiting for app readiness...'
+          for i in {1..20}; do
+            if curl -s http://localhost:$TEMP_PORT > /dev/null; then
+              echo 'New container is ready'
+              break
+            fi
+            sleep 3
+          done
+
+          echo 'Stopping OLD container'
+          docker stop ${IMAGE_REPO_NAME}-container || true
+          docker rm ${IMAGE_REPO_NAME}-container || true
+
+          echo 'Starting NEW container on LIVE port'
+          docker run -d -p $HOST_PORT:8080 --name ${IMAGE_REPO_NAME}-container \$IMAGE
+
+          echo 'Cleaning TEMP container'
+          docker stop ${IMAGE_REPO_NAME}-new
+          docker rm ${IMAGE_REPO_NAME}-new
+        "
