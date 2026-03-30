@@ -1,10 +1,11 @@
-FROM maven:3.9.6-eclipse-temurin-17 AS build
+FROM public.ecr.aws/amazoncorretto/amazoncorretto:17-al2023-headless AS build
+RUN yum install -y maven
 WORKDIR /app
 COPY pom.xml .
 COPY src ./src
 RUN mvn clean package -DskipTests
 
-FROM eclipse-temurin:17-jre-jammy
+FROM public.ecr.aws/amazoncorretto/amazoncorretto:17-al2023-headless
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 EXPOSE 8080
