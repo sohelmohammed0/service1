@@ -9,8 +9,6 @@ env:
     EC2_HOST: 3.92.134.179
     HOST_PORT: 8081
     TEMP_PORT: 9090
-  parameter-store:
-    SSH_KEY: "codebuild-ssh-key"   # ← pulls your key with newlines intact
 
 phases:
   pre_build:
@@ -19,7 +17,7 @@ phases:
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
 
       - mkdir -p ~/.ssh
-      - echo "$SSH_KEY" > ~/.ssh/id_rsa
+      - aws ssm get-parameter --name "codebuild-ssh-key" --with-decryption --region $AWS_DEFAULT_REGION --query "Parameter.Value" --output text | base64 -d > ~/.ssh/id_rsa
       - chmod 600 ~/.ssh/id_rsa
       - ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null && echo "Key is valid"
       - ssh-keyscan -H $EC2_HOST >> ~/.ssh/known_hosts
@@ -37,13 +35,15 @@ phases:
 
       - echo "Deploying to EC2..."
       - |
-        ssh -o StrictHostKeyChecking=no ubuntu@$EC2_HOST bash -s << 'ENDSSH'
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ubuntu@$EC2_HOST bash -s << 'ENDSSH'
           set -e
 
           IMAGE=412128478995.dkr.ecr.us-east-1.amazonaws.com/service1:latest
 
-          echo "Pull latest image"
+          echo "Logging into ECR on EC2..."
           aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 412128478995.dkr.ecr.us-east-1.amazonaws.com
+
+          echo "Pull latest image"
           docker pull $IMAGE
 
           echo "Start NEW container on TEMP port"
@@ -66,6 +66,8 @@ phases:
           docker run -d -p 8081:8080 --name service1-container $IMAGE
 
           echo "Cleaning TEMP container"
-          docker stop service1-new
-          docker rm service1-new
+          docker stop service1-new || true
+          docker rm service1-new || true
+
+          echo "Deployment complete!"
         ENDSSH
