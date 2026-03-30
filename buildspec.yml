@@ -16,11 +16,11 @@ phases:
       - echo "Logging into ECR..."
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
 
-      # SSH setup
+      # Setup SSH
       - mkdir -p ~/.ssh
-      - echo "$SSH_KEY" > ~/.ssh/id_rsa
+      - printf "%s\n" "$SSH_KEY" > ~/.ssh/id_rsa
       - chmod 600 ~/.ssh/id_rsa
-      - ssh-keyscan $EC2_HOST >> ~/.ssh/known_hosts
+      - ssh-keyscan -H $EC2_HOST >> ~/.ssh/known_hosts
 
   build:
     commands:
@@ -38,7 +38,7 @@ phases:
       - echo "Deploying to EC2 with zero downtime..."
 
       - |
-        ssh ubuntu@$EC2_HOST "
+        ssh -o StrictHostKeyChecking=no ubuntu@$EC2_HOST "
           set -e
 
           IMAGE=$ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
