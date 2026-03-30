@@ -9,6 +9,8 @@ env:
     EC2_HOST: 3.92.134.179
     HOST_PORT: 8081
     TEMP_PORT: 9090
+  parameter-store:
+    SSH_KEY: "codebuild-ssh-key"   # ← pulls your key with newlines intact
 
 phases:
   pre_build:
@@ -16,18 +18,16 @@ phases:
       - echo "Logging into ECR..."
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
 
-      # Setup SSH
       - mkdir -p ~/.ssh
-      - printf "%s\n" "$SSH_KEY" > ~/.ssh/id_rsa
+      - echo "$SSH_KEY" > ~/.ssh/id_rsa
       - chmod 600 ~/.ssh/id_rsa
+      - ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null && echo "Key is valid"
       - ssh-keyscan -H $EC2_HOST >> ~/.ssh/known_hosts
 
   build:
     commands:
       - echo "Building Docker image..."
       - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .
-
-      - echo "Tagging image..."
       - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
 
   post_build:
@@ -35,37 +35,37 @@ phases:
       - echo "Pushing image to ECR..."
       - docker push $ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
 
-      - echo "Deploying to EC2 with zero downtime..."
-
+      - echo "Deploying to EC2..."
       - |
-        ssh -o StrictHostKeyChecking=no ubuntu@$EC2_HOST "
+        ssh -o StrictHostKeyChecking=no ubuntu@$EC2_HOST bash -s << 'ENDSSH'
           set -e
 
-          IMAGE=$ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+          IMAGE=412128478995.dkr.ecr.us-east-1.amazonaws.com/service1:latest
 
-          echo 'Pull latest image'
-          docker pull \$IMAGE
+          echo "Pull latest image"
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 412128478995.dkr.ecr.us-east-1.amazonaws.com
+          docker pull $IMAGE
 
-          echo 'Start NEW container on TEMP port'
-          docker run -d -p $TEMP_PORT:8080 --name ${IMAGE_REPO_NAME}-new \$IMAGE
+          echo "Start NEW container on TEMP port"
+          docker run -d -p 9090:8080 --name service1-new $IMAGE
 
-          echo 'Waiting for app readiness...'
+          echo "Waiting for app readiness..."
           for i in {1..20}; do
-            if curl -s http://localhost:$TEMP_PORT > /dev/null; then
-              echo 'New container is ready'
+            if curl -s http://localhost:9090 > /dev/null; then
+              echo "New container is ready"
               break
             fi
             sleep 3
           done
 
-          echo 'Stopping OLD container'
-          docker stop ${IMAGE_REPO_NAME}-container || true
-          docker rm ${IMAGE_REPO_NAME}-container || true
+          echo "Stopping OLD container"
+          docker stop service1-container || true
+          docker rm service1-container || true
 
-          echo 'Starting NEW container on LIVE port'
-          docker run -d -p $HOST_PORT:8080 --name ${IMAGE_REPO_NAME}-container \$IMAGE
+          echo "Starting NEW container on LIVE port"
+          docker run -d -p 8081:8080 --name service1-container $IMAGE
 
-          echo 'Cleaning TEMP container'
-          docker stop ${IMAGE_REPO_NAME}-new
-          docker rm ${IMAGE_REPO_NAME}-new
-        "
+          echo "Cleaning TEMP container"
+          docker stop service1-new
+          docker rm service1-new
+        ENDSSH
